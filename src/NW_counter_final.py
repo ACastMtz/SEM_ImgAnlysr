@@ -15,7 +15,8 @@ class NW_SEM_image:
         self.name = name 
         self.size = size
         return  
-
-    def stats_analyzer(self):
+    
+    '''Method to print images'''
+    def printer(self):
         
         return
