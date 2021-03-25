@@ -11,9 +11,11 @@ from sklearn.metrics import silhouette_samples, silhouette_score
 
 class NW_SEM_image:
     '''Defining metadata (instance attributes)'''
-    def __init__(self, name, size):
+    def __init__(self, name, size, tilt, magn):
         self.name = name 
         self.size = size
+        self.tilt = tilt 
+        self.magn = magn
         return  
     
     '''Method to print images'''
