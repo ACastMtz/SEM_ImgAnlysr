@@ -18,6 +18,21 @@ class NW_SEM_image:
         self.magn = magn
         return  
     
+    '''Method to find adequate threshold for image filtering'''
+    def img_threshold(self):
+        
+        return
+
+    '''Method to filter the image'''
+    def img_filtering(self):
+        
+        return
+
+    '''Method to crop, find length scale, etc. of the image'''
+    def img_processing(self):
+        
+        return
+
     '''Method to print images'''
     def printer(self):
         
