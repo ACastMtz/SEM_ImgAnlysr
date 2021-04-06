@@ -10,8 +10,9 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_samples, silhouette_score
 
 class NW_SEM_image:
-    '''Defining metadata (instance attributes)'''
+    
     def __init__(self, path, size, tilt, magn, pitch, metric_size, verbosity):
+        '''Defining metadata (instance attributes)'''
         self.path = path 
         self.size = size
         self.tilt = tilt 
@@ -25,8 +26,9 @@ class NW_SEM_image:
         
         return  
     
-    '''Print instance's info'''
+    
     def __str__(self):
+        '''Print instance's info'''
         img_info = f" \
             Path: {self.path} \n \
             Size: {self.size} \n \
@@ -40,12 +42,14 @@ class NW_SEM_image:
             "
         return img_info
 
-    '''Load image'''
+    
     def img_loader(self):
+        '''Load image'''
         return cv2.imread(self.path)
 
-    '''Check image parameters'''
+    
     def params_ctrl(self):
+        '''Check image parameters'''
         case_1 = [1280,960,25]
         case_2 = [1280,960,6]
         params_list = [self.__imgWidth, self.__imgHeight, self.magn]
@@ -58,12 +62,13 @@ class NW_SEM_image:
         
         return key
 
-    '''Switcher'''
+    
     def one(self):
         return int(0.588*self.__imgWidth)
     def two(self):
         return int(0.745*self.__imgWidth)
     def img_sizes(self, key):
+        '''Switcher'''
         switcher = {
             0: lambda: 'zero',
             1: self.one,
@@ -104,9 +109,9 @@ class NW_SEM_image:
 
         return img, img_cr
 
-    '''Method to filter the image'''
+    
     def img_filtering(self, n_clusters):
-
+        '''Method to filter the image'''
         img, img_cr = self.img_processing()
 
         # KMeans thresholding (Pixel clustering)
@@ -123,26 +128,68 @@ class NW_SEM_image:
 
         return grayscale_n, bw
 
-    '''Method to print images'''
+    
+    def connected_components(self, n_clusters):
+        ''' Find connected components '''
+        _, img_cr = self.img_processing()
+        grayscale_n, bw, thr = self.img_filtering(n_clusters)
+
+        connectivity = 8
+        nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(bw, connectivity, cv2.CV_32S)
+        sizes = stats[1:, -1] 
+        nb_components = nb_components - 1
+        img = np.zeros((img_cr.shape), np.uint8)
+        diag = []
+        base = []
+        height = []
+        for i in range(0, nb_components+1):
+            color = np.random.randint(255,size=3)
+            x1 = stats[i][0]
+            y1 = stats[i][1]
+            x2 = stats[i][0]+stats[i][2]
+            y2 = stats[i][1]+stats[i][3]
+            diag.append(math.sqrt((x2-x1)**2+(y2-y1)**2))
+            base.append(abs(x2-x1))
+            height.append(abs(y2-y1))
+            cv2.rectangle(img, (x1,y1),(x2,y2), (0,255,0), 2)
+            img[output == i + 1] = color
+        diag = np.asarray(diag)*self.nmToPx
+        base = np.asarray(base)*self.nmToPx
+        height = np.asarray(height)*self.nmToPx/math.sin(tilt*math.pi/180)
+        if self.verbosity == True:
+            print('Threshold: {}'.format(thr))
+            print('Number of labels: {}'.format(nb_components))
+            print('Diagonal array length: {}'.format(diag[1:].shape[0]))
+            print('Base array length: {}'.format(base[1:].shape[0]))
+            print('Height array length: {}'.format(height[1:].shape[0]))
+        return img, diag, base, height
+
+
     def printer(self, num_plots):
+        '''Method to print images'''
         img, img_cr = self.img_processing()
-        grayscale_n , bw = self.img_filtering(n_clusters=3)
+        grayscale_n , bw,_ = self.img_filtering(n_clusters=3)
+        img_conComp,_,_,_ = self.connected_components(n_clusters=3)
 
         fig = plt.figure()
-        ax1 = fig.add_subplot(1,num_plots,1)
+        ax1 = fig.add_subplot(2,num_plots/2,1)
         ax1.imshow(img)
         plt.title('Original Image')
         plt.axis('off')
-        ax2 = fig.add_subplot(1,num_plots,2)
+        ax2 = fig.add_subplot(2,num_plots/2,2)
         ax2.imshow(img_cr)
         plt.title('Cropped Image')
         plt.axis('off')
-        ax3 = fig.add_subplot(1,num_plots,3)
+        ax3 = fig.add_subplot(2,num_plots/2,3)
         counts , vals = np.histogram(grayscale_n, bins=500)
         plt.plot(np.linspace(0,1, num=500), counts, label='original')
         plt.title('Grayscale image histogram')
         plt.xlabel('Pixel intensity')
         plt.ylabel('Count')
+        ax4 = fig.add_subplot(2,num_plots/2,4)
+        ax4.imshow(img_conComp)
+        plt.title('Detected Objects')
+        plt.axis('off')
         plt.show()
         return
 
@@ -154,7 +201,7 @@ tilt = 15
 magn = 25
 pitch = 400
 metric_size = 5000
-num_plots = 3
+num_plots = 4
 verbosity = True
 
 # Instance
