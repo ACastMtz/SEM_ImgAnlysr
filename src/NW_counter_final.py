@@ -164,6 +164,21 @@ class NW_SEM_image:
             print('Height array length: {}'.format(height[1:].shape[0]))
         return img, diag, base, height
 
+    def det_obj_clustering(self, diag, base, height, n_clusters):
+        ''' Second KMeans clustering for rectangles'''
+
+        diag_2d = diag[1:].reshape(diag[1:].shape[0],1)
+        base_2d = base[1:].reshape(base[1:].shape[0],1)
+        height_2d = height[1:].reshape(height[1:].shape[0],1)
+        X = np.concatenate((height_2d, base_2d), axis=1)
+        scaler = preprocessing.StandardScaler().fit(X)
+        X = scaler.transform(X)
+        kmeans_model =KMeans(n_clusters=n_clusters, random_state=0).fit(X)
+        y_kmeans = kmeans_model.predict(X)
+        size_centers = kmeans_model.cluster_centers_
+        rect_labels = kmeans_model.labels_
+
+        return size_centers, rect_labels
 
     def printer(self, num_plots):
         '''Method to print images'''
