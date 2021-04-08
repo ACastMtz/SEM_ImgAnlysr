@@ -23,6 +23,7 @@ class NW_SEM_image:
         self.__imgWidth = size[0]
         self.__imgHeight = size[1]
         self.__nmToPx = 0
+        self.__imgCrSize = []
         
         return  
     
@@ -79,7 +80,7 @@ class NW_SEM_image:
 
     # ----------------------------------------------------------------------------------- #
 
-    def img_processing(self):
+    def img_processing(self,img):
         '''
         Method to crop, find length scale, etc. of the image.
         If non standard images are used, i.e. not taken with the PDI SEM
@@ -87,7 +88,6 @@ class NW_SEM_image:
         of the reference metric (to draw a rectangle around it). 
         NOTE: The leftmost horizontal vertex is defined in the Switcher function.
         '''
-        img = self.img_loader()
         img_h, img_w = img.shape[0:2]
         if [img_w, img_h] != self.size:
             raise ValueError('Please enter an accepted image size in pixels')
@@ -106,16 +106,16 @@ class NW_SEM_image:
         # Crop image
         crop_h = img_h - int(img_h/10)
         img_cr = img[0:crop_h,:]
+        self.__imgCrSize = img_cr.shape
 
-        return img, img_cr
+        return img_cr
 
     
-    def img_filtering(self, n_clusters):
+    def img_filtering(self, img, n_clusters):
         '''Method to filter the image'''
-        img, img_cr = self.img_processing()
 
         # KMeans thresholding (Pixel clustering)
-        grayscale = cv2.cvtColor(img_cr , cv2.COLOR_BGR2GRAY)
+        grayscale = cv2.cvtColor(img , cv2.COLOR_BGR2GRAY)
         grayscale_n = grayscale.reshape(grayscale.shape[0]*grayscale.shape[1],1)/255
         clusterer = KMeans(n_clusters=n_clusters, random_state=0).fit(grayscale_n)
         threshold = np.sort(clusterer.cluster_centers_, axis=0)
@@ -126,19 +126,16 @@ class NW_SEM_image:
         thr = int(threshold[n_clusters-1][0]*255)
         ret, bw = cv2.threshold(grayscale, thr, 255, cv2.THRESH_BINARY)
 
-        return grayscale_n, bw
+        return grayscale_n, bw, thr
 
     
-    def connected_components(self, n_clusters):
+    def connected_components(self, bw, n_clusters):
         ''' Find connected components '''
-        _, img_cr = self.img_processing()
-        grayscale_n, bw, thr = self.img_filtering(n_clusters)
-
         connectivity = 8
         nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(bw, connectivity, cv2.CV_32S)
         sizes = stats[1:, -1] 
         nb_components = nb_components - 1
-        img = np.zeros((img_cr.shape), np.uint8)
+        img = np.zeros((self.__imgCrSize), np.uint8)
         diag = []
         base = []
         height = []
@@ -162,11 +159,11 @@ class NW_SEM_image:
             print('Diagonal array length: {}'.format(diag[1:].shape[0]))
             print('Base array length: {}'.format(base[1:].shape[0]))
             print('Height array length: {}'.format(height[1:].shape[0]))
+        
         return img, diag, base, height
 
-    def det_obj_clustering(self, diag, base, height, n_clusters):
+    def det_obj_clustering(diag, base, height, n_clusters):
         ''' Second KMeans clustering for rectangles'''
-
         diag_2d = diag[1:].reshape(diag[1:].shape[0],1)
         base_2d = base[1:].reshape(base[1:].shape[0],1)
         height_2d = height[1:].reshape(height[1:].shape[0],1)
@@ -180,11 +177,28 @@ class NW_SEM_image:
 
         return size_centers, rect_labels
 
+    def results_df(size_centers, rect_labels):
+        points_per_cluster = []
+        val_cluster = []
+        for i in range(size_centers.shape[0]):
+            p_per_cl = rect_labels[rect_labels == i]
+            points_per_cluster.append(len(p_per_cl))
+            x = size_centers[i][0]
+            y = size_centers[i][1]
+            val_cluster.append(math.sqrt(x**2 + y**2))      # Distance of cluster center from origin
+        print('Size Center Values: \n {}'.format(size_centers))
+        df = pd.DataFrame(
+            list(zip(val_cluster, points_per_cluster)),
+            columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=False)
+        
+        return df
+
     def printer(self, num_plots):
         '''Method to print images'''
-        img, img_cr = self.img_processing()
-        grayscale_n , bw,_ = self.img_filtering(n_clusters=3)
-        img_conComp,_,_,_ = self.connected_components(n_clusters=3)
+        img = self.img_loader()
+        img_cr = self.img_processing(img)
+        grayscale_n , bw,_ = self.img_filtering(img=img_cr, n_clusters=3)
+        img_conComp,_,_,_ = self.connected_components(bw=bw, n_clusters=3)
 
         fig = plt.figure()
         ax1 = fig.add_subplot(2,num_plots/2,1)
@@ -224,4 +238,15 @@ test_img = NW_SEM_image(path=img_path, size=size, tilt=tilt, magn=magn, pitch=pi
 print(test_img)
 
 # Methods
+
+## Results
+img = test_img.img_loader()
+img_cr = test_img.img_processing(img)
+grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
+img_conComp, diag, base, height = test_img.connected_components(bw=bw, n_clusters=3)
+size_centers, rect_labels = test_img.det_obj_clustering(diag, base, height, n_clusters=3)
+df = test_img.results_df(size_centers, rect_labels)
+print(df)
+
+## Plots
 test_img.printer(num_plots=num_plots)
