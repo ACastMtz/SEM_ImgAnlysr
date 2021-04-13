@@ -8,6 +8,7 @@ import math
 import pandas as pd 
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn import preprocessing
 
 class NW_SEM_image:
     
@@ -119,14 +120,14 @@ class NW_SEM_image:
         grayscale_n = grayscale.reshape(grayscale.shape[0]*grayscale.shape[1],1)/255
         clusterer = KMeans(n_clusters=n_clusters, random_state=0).fit(grayscale_n)
         threshold = np.sort(clusterer.cluster_centers_, axis=0)
-        if self.verbosity == True:
+        if self.verbosity:
             print('Threshold Center Values: \n {}'.format(threshold))
         
         # Binarize image
         thr = int(threshold[n_clusters-1][0]*255)
         ret, bw = cv2.threshold(grayscale, thr, 255, cv2.THRESH_BINARY)
 
-        return grayscale_n, bw, thr
+        return grayscale, grayscale_n, bw, thr
 
     
     def connected_components(self, bw, n_clusters):
@@ -153,31 +154,18 @@ class NW_SEM_image:
         diag = np.asarray(diag)*self.nmToPx
         base = np.asarray(base)*self.nmToPx
         height = np.asarray(height)*self.nmToPx/math.sin(tilt*math.pi/180)
-        if self.verbosity == True:
+        if self.verbosity:
             print('Threshold: {}'.format(thr))
             print('Number of labels: {}'.format(nb_components))
             print('Diagonal array length: {}'.format(diag[1:].shape[0]))
             print('Base array length: {}'.format(base[1:].shape[0]))
             print('Height array length: {}'.format(height[1:].shape[0]))
-        
+        base = base[1:].reshape(base[1:].shape[0],1)
+        height = height[1:].reshape(height[1:].shape[0],1)
+
         return img, diag, base, height
 
-    def det_obj_clustering(diag, base, height, n_clusters):
-        ''' Second KMeans clustering for rectangles'''
-        diag_2d = diag[1:].reshape(diag[1:].shape[0],1)
-        base_2d = base[1:].reshape(base[1:].shape[0],1)
-        height_2d = height[1:].reshape(height[1:].shape[0],1)
-        X = np.concatenate((height_2d, base_2d), axis=1)
-        scaler = preprocessing.StandardScaler().fit(X)
-        X = scaler.transform(X)
-        kmeans_model =KMeans(n_clusters=n_clusters, random_state=0).fit(X)
-        y_kmeans = kmeans_model.predict(X)
-        size_centers = kmeans_model.cluster_centers_
-        rect_labels = kmeans_model.labels_
-
-        return size_centers, rect_labels
-
-    def results_df(size_centers, rect_labels):
+    def results_clustering(self, size_centers, rect_labels):
         points_per_cluster = []
         val_cluster = []
         for i in range(size_centers.shape[0]):
@@ -186,18 +174,58 @@ class NW_SEM_image:
             x = size_centers[i][0]
             y = size_centers[i][1]
             val_cluster.append(math.sqrt(x**2 + y**2))      # Distance of cluster center from origin
-        print('Size Center Values: \n {}'.format(size_centers))
+        if self.verbosity:
+            print('Size Center Values: \n {}'.format(size_centers))
         df = pd.DataFrame(
             list(zip(val_cluster, points_per_cluster)),
             columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=False)
         
         return df
 
+    def NW_stats(self, grayscale, df, top_clusters=[1,2]):
+        # NW Stats
+        pitch = self.pitch/self.nmToPx    #  nm per pixel
+        col_vert = int(grayscale.shape[0]/pitch)
+        row_vert = int(grayscale.shape[1]/pitch)
+        num_holes = col_vert*row_vert
+        NW_num = df['Num. Elements'].iloc[top_clusters].sum()
+        NW_ind = top_clusters
+        widths = base[1:]
+        heights = height[1:]
+        print(NW_ind)
+        NW_height = np.mean(heights[rect_labels == NW_ind[0]])
+        NW_height_un = np.std(heights[rect_labels == NW_ind[0]])
+        NW_width = np.mean(widths[rect_labels == NW_ind[0]])
+        NW_width_un = np.std(widths[rect_labels == NW_ind[0]])
+        print(df.iloc[top_clusters])
+        if self.verbosity:
+            print('Ratio nm/pixel: {:.2f}'.format(self.nmToPx))
+            print('Pitch [pixels]: {:.2f}'.format(pitch))
+            print('Row vert.: {}'.format(row_vert))
+            print('Column vert.: {}'.format(col_vert))
+            print('Number of holes: {}'.format(num_holes))
+            print('Number of NWs: {}'.format(NW_num))
+            print('Vertical yield: {:.2%}'.format(NW_num/num_holes))
+        results_ind = ['Vertical Yield', 'Avg. Height[nm]', 'Avg. Diameter [nm]']
+        results_cols = ['Value', 'Uncertainty']
+        results_vals = [
+            [NW_num/num_holes, 'NaN'],
+            [NW_height, NW_height_un],
+            [NW_width, NW_width_un]
+            ]
+        results_df = pd.DataFrame(
+            data=results_vals,
+            index=results_ind,
+            columns=results_cols
+        )
+
+        return results_df
+
     def printer(self, num_plots):
         '''Method to print images'''
         img = self.img_loader()
         img_cr = self.img_processing(img)
-        grayscale_n , bw,_ = self.img_filtering(img=img_cr, n_clusters=3)
+        _, grayscale_n , bw,_ = self.img_filtering(img=img_cr, n_clusters=3)
         img_conComp,_,_,_ = self.connected_components(bw=bw, n_clusters=3)
 
         fig = plt.figure()
@@ -222,6 +250,38 @@ class NW_SEM_image:
         plt.show()
         return
 
+def det_obj_clustering(base, height, n_clusters):
+    '''KMeans clustering for detecting rectangles'''
+    # diag_2d = diag[1:].reshape(diag[1:].shape[0],1)
+    X = np.concatenate((height, base), axis=1)
+    scaler = preprocessing.StandardScaler().fit(X)
+    X = scaler.transform(X)
+    kmeans_model =KMeans(n_clusters=n_clusters, random_state=0).fit(X)
+    y_kmeans = kmeans_model.predict(X)
+    size_centers = kmeans_model.cluster_centers_
+    rect_labels = kmeans_model.labels_
+
+    return size_centers, rect_labels
+
+def autolabels(freq,bins,patches):
+    '''
+    Annotate graph points with the sample's name
+    '''
+    bin_centers = np.diff(bins)*0.5 + bins[:-1]
+    n = 0
+    for _,j,_ in zip(freq,bin_centers,patches):
+        h = int(freq[n])
+        plt.annotate(
+            '{}'.format(h),
+            xy = (j, h),
+            xytext = (0,0),
+            textcoords = 'offset points',
+            ha = 'center', va = 'bottom',
+            color='r'
+        )
+        n += 1
+
+#===============================================================================================#
 
 img_path = 'Images\InGaAs\M3_2390_50nm0.4um-15Tilt-10K.jpg'
 size = [1280,960]
@@ -238,15 +298,16 @@ test_img = NW_SEM_image(path=img_path, size=size, tilt=tilt, magn=magn, pitch=pi
 print(test_img)
 
 # Methods
-
-## Results
 img = test_img.img_loader()
 img_cr = test_img.img_processing(img)
-grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
+grayscale, grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
 img_conComp, diag, base, height = test_img.connected_components(bw=bw, n_clusters=3)
-size_centers, rect_labels = test_img.det_obj_clustering(diag, base, height, n_clusters=3)
-df = test_img.results_df(size_centers, rect_labels)
+size_centers, rect_labels = det_obj_clustering(base, height, n_clusters=3)
+df = test_img.results_clustering(size_centers, rect_labels)
 print(df)
 
-## Plots
+# From analysis define number of top_clusters
+top_clusters = [1,2]
+
+# Plots
 test_img.printer(num_plots=num_plots)
