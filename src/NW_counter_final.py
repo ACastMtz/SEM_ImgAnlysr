@@ -143,7 +143,6 @@ class NW_SEM_IMG:
         sizes = stats[1:, -1] 
         nb_components = nb_components - 1
         img = np.zeros((self.__imgCrSize), np.uint8)
-        #diag = []
         base = []
         height = []
         for i in range(0, nb_components+1):
@@ -152,43 +151,22 @@ class NW_SEM_IMG:
             y1 = stats[i][1]
             x2 = stats[i][0]+stats[i][2]
             y2 = stats[i][1]+stats[i][3]
-         #    diag.append(math.sqrt((x2-x1)**2+(y2-y1)**2))
             base.append(abs(x2-x1))
             height.append(abs(y2-y1))
             cv2.rectangle(img, (x1,y1),(x2,y2), (0,255,0), 2)
             img[output == i + 1] = color
-         #diag = np.asarray(diag)*self.nmToPx
         base = np.asarray(base)*self.nmToPx
-        height = np.asarray(height)*self.nmToPx/math.sin(tilt*math.pi/180)
-        if self.verbosity:
-            print('Number of labels: {}'.format(nb_components))
-         #    print('Diagonal array length: {}'.format(diag[1:].shape[0]))
-            print('Base array length: {}'.format(base[1:].shape[0]))
-            print('Height array length: {}'.format(height[1:].shape[0]))
+        height = np.asarray(height)*self.nmToPx/math.sin(self.tilt*math.pi/180)
         base = base[1:].reshape(base[1:].shape[0],1)
         height = height[1:].reshape(height[1:].shape[0],1)
+        if self.verbosity:
+            print('Number of labels: {}'.format(nb_components))
+            print('Base array length: {}'.format(base.shape[0]))
+            print('Height array length: {}'.format(height.shape[0]))
 
         return img, base, height
 
-    def results_clustering(self, size_centers, rect_labels):
-        points_per_cluster = []
-        val_cluster = []
-        for i in range(size_centers.shape[0]):
-            p_per_cl = rect_labels[rect_labels == i]
-            points_per_cluster.append(len(p_per_cl))
-            x = size_centers[i][0]
-            y = size_centers[i][1]
-            val_cluster.append(math.sqrt(x**2 + y**2))      # Distance of cluster center from origin
-        if self.verbosity:
-            print('Size Center Values: \n {}'.format(size_centers))
-        df = pd.DataFrame(
-            list(zip(val_cluster, points_per_cluster)),
-            columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=False
-            )
-        
-        return df
-
-    def NW_stats(self, grayscale, base, height, df, rect_labels, top_clusters=[1,2]):
+    def NW_stats(self, grayscale, base, height, df, rect_labels, top_clusters):
         '''
         NW Stats
         '''
@@ -198,8 +176,8 @@ class NW_SEM_IMG:
         num_holes = col_vert*row_vert
         NW_num = df['Num. Elements'].iloc[top_clusters].sum()
         NW_ind = top_clusters
-        widths = base[1:]
-        heights = height[1:]
+        widths = base[:]
+        heights = height[:]
         print(NW_ind)
         NW_height = np.mean(heights[rect_labels == NW_ind[0]])
         NW_height_un = np.std(heights[rect_labels == NW_ind[0]])
@@ -259,9 +237,12 @@ class NW_SEM_IMG:
         return
 
 def det_obj_clustering(base, height, n_clusters):
-    '''KMeans clustering for detecting rectangles'''
-    # diag_2d = diag[1:].reshape(diag[1:].shape[0],1)
-    X = np.concatenate((height, base), axis=1)
+    '''
+    KMeans clustering for detecting rectangles
+    '''
+    # base = base[1:].reshape(base[1:].shape[0],1)
+    # height = height[1:].reshape(height[1:].shape[0],1)
+    X = np.concatenate((base,height), axis=1)
     scaler = preprocessing.StandardScaler().fit(X)
     X = scaler.transform(X)
     kmeans_model =KMeans(n_clusters=n_clusters, random_state=0).fit(X)
@@ -270,6 +251,37 @@ def det_obj_clustering(base, height, n_clusters):
     rect_labels = kmeans_model.labels_
 
     return size_centers, rect_labels
+
+def results_clustering(size_centers, rect_labels, n_clusters):
+    '''
+    Computes the kmeans clustering to detect objects (NWs) in the image and
+    yields the results in a pandas dataframe.
+    '''
+    points_per_cluster = []
+    val_cluster = []
+    for i in range(size_centers.shape[0]):
+        p_per_cl = rect_labels[rect_labels == i]
+        points_per_cluster.append(len(p_per_cl))
+        x = size_centers[i][0]
+        y = size_centers[i][1]
+        val_cluster.append(math.sqrt(x**2 + y**2))      # Distance of cluster center from origin
+    idx = np.argsort(np.asarray(val_cluster))
+    lut = np.zeros_like(idx)
+    lut[idx] = np.arange(n_clusters)
+    sort_centers = [size_centers[i] for i in idx]
+    sort_labels = lut[rect_labels]
+    print('Size Center Values: \n {}'.format(size_centers))
+    print('Sorted Size Center Values: \n {}'.format(sort_centers))
+    # sort_size_centers = [size_centers[i] for i in idx]
+    # # print('Sorted Size Center Values: \n {}'.format(sort_size_centers))
+    print('Arg to sort: \n {}'.format(idx))
+    print('Size Center Values: \n {}'.format(val_cluster))
+    print('Sorted Size Center Values: \n {}'.format(sort_centers))
+    df = pd.DataFrame(
+        [list(zip(val_cluster, points_per_cluster))[i] for i in idx],
+        columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=True)
+        
+    return df, sort_centers, sort_labels
 
 def autolabels(freq,bins,patches):
     '''
@@ -301,6 +313,7 @@ def main():
     metric_size = 5000
     num_plots = 4
     verbosity = True
+    n_clusters=3
 
     # Instance
     test_img = NW_SEM_IMG(path=img_path, size=size, tilt=tilt, magn=magn, pitch=pitch, metric_size=metric_size, verbosity=verbosity)
@@ -310,17 +323,21 @@ def main():
     img = test_img.img_loader()
     img_cr = test_img.img_processing(img)
     grayscale, grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
-    img_conComp, base, height = test_img.connected_components(bw=bw, n_clusters=3)
-    size_centers, rect_labels = det_obj_clustering(base, height, n_clusters=3)
-    df = test_img.results_clustering(size_centers, rect_labels)
+    img_conComp, base, height = test_img.connected_components(bw=bw, n_clusters=n_clusters)
+
+    # Non class methods
+    size_centers, rect_labels = det_obj_clustering(base, height, n_clusters)
+    df, sort_centers, sort_labels = results_clustering(size_centers, rect_labels, n_clusters)
+    # df, rect_labels = test_img.results_clustering(base, height, n_clusters)
     print(df)
 
     # From analysis define number of top_clusters
-    top_clusters = [1,2]
-    results_df = test_img.NW_stats(grayscale, base, height, df, rect_labels, top_clusters=[1,2])
+    top_clusters = [0,2]
+    results_df = test_img.NW_stats(grayscale, base, height, df, rect_labels, top_clusters=top_clusters)
+    print(results_df)
 
     # Plots
-    test_img.printer(num_plots=num_plots)
+    # test_img.printer(num_plots=num_plots)
 
 if __name__ == '__main__':
     main()
