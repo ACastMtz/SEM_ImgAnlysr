@@ -240,17 +240,15 @@ def det_obj_clustering(base, height, n_clusters):
     '''
     KMeans clustering for detecting rectangles
     '''
-    # base = base[1:].reshape(base[1:].shape[0],1)
-    # height = height[1:].reshape(height[1:].shape[0],1)
-    X = np.concatenate((base,height), axis=1)
-    scaler = preprocessing.StandardScaler().fit(X)
+    X = np.concatenate((height,base), axis=1)
+    scaler = preprocessing.MinMaxScaler().fit(X)
     X = scaler.transform(X)
-    kmeans_model =KMeans(n_clusters=n_clusters, random_state=0).fit(X)
+    kmeans_model =KMeans(n_clusters=n_clusters, random_state=10).fit(X)
     y_kmeans = kmeans_model.predict(X)
     size_centers = kmeans_model.cluster_centers_
     rect_labels = kmeans_model.labels_
 
-    return size_centers, rect_labels
+    return X, size_centers, rect_labels
 
 def results_clustering(size_centers, rect_labels, n_clusters):
     '''
@@ -270,13 +268,11 @@ def results_clustering(size_centers, rect_labels, n_clusters):
     lut[idx] = np.arange(n_clusters)
     sort_centers = [size_centers[i] for i in idx]
     sort_labels = lut[rect_labels]
-    print('Size Center Values: \n {}'.format(size_centers))
-    print('Sorted Size Center Values: \n {}'.format(sort_centers))
-    # sort_size_centers = [size_centers[i] for i in idx]
-    # # print('Sorted Size Center Values: \n {}'.format(sort_size_centers))
-    print('Arg to sort: \n {}'.format(idx))
-    print('Size Center Values: \n {}'.format(val_cluster))
-    print('Sorted Size Center Values: \n {}'.format(sort_centers))
+    # print('Size Center Values: \n {}'.format(size_centers))
+    # print('Sorted Size Center Values: \n {}'.format(sort_centers))
+    # print('Arg to sort: \n {}'.format(idx))
+    # print('Size Center Values: \n {}'.format(val_cluster))
+    # print('Sorted Size Center Values: \n {}'.format(sort_centers))
     df = pd.DataFrame(
         [list(zip(val_cluster, points_per_cluster))[i] for i in idx],
         columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=True)
@@ -326,13 +322,12 @@ def main():
     img_conComp, base, height = test_img.connected_components(bw=bw, n_clusters=n_clusters)
 
     # Non class methods
-    size_centers, rect_labels = det_obj_clustering(base, height, n_clusters)
+    X, size_centers, rect_labels = det_obj_clustering(base, height, n_clusters)
     df, sort_centers, sort_labels = results_clustering(size_centers, rect_labels, n_clusters)
-    # df, rect_labels = test_img.results_clustering(base, height, n_clusters)
     print(df)
 
     # From analysis define number of top_clusters
-    top_clusters = [0,2]
+    top_clusters = [1,2]
     results_df = test_img.NW_stats(grayscale, base, height, df, rect_labels, top_clusters=top_clusters)
     print(results_df)
 
