@@ -236,11 +236,11 @@ class NW_SEM_IMG:
         plt.show()
         return
 
-def det_obj_clustering(base, height, n_clusters):
+def det_obj_clustering(X, n_clusters):
     '''
     KMeans clustering for detecting rectangles
     '''
-    X = np.concatenate((height,base), axis=1)
+    # X = np.concatenate((height,base), axis=1)
     scaler = preprocessing.MinMaxScaler().fit(X)
     X = scaler.transform(X)
     kmeans_model =KMeans(n_clusters=n_clusters, random_state=10).fit(X)
@@ -248,7 +248,7 @@ def det_obj_clustering(base, height, n_clusters):
     size_centers = kmeans_model.cluster_centers_
     rect_labels = kmeans_model.labels_
 
-    return X, size_centers, rect_labels
+    return size_centers, rect_labels
 
 def results_clustering(size_centers, rect_labels, n_clusters):
     '''
@@ -278,6 +278,35 @@ def results_clustering(size_centers, rect_labels, n_clusters):
         columns=['Cluster Value','Num. Elements']).sort_values(by=['Cluster Value'], ascending=True)
         
     return df, sort_centers, sort_labels
+
+def elbow_method(K, X):
+    '''
+    Uses the elbow method to find the optimal number of clusters for KMeans
+    '''
+    distortions = []
+    for k in K:
+        clusterer = KMeans(n_clusters=k)
+        clusterer.fit(X)
+        distortions.append(clusterer.inertia_)
+        # print('Fon n_clusters = {} The inertia is : {} '.format(k, kmeans_model.inertia_))
+    return distortions
+
+def silhouette_method(K, X):
+    silhouettes = []
+    for k in K:
+        # Initialize the clusterer with n_clusters value and a random generator
+        # seed of 10 for reproducibility.
+        clusterer = KMeans(n_clusters=k, random_state=10)
+        cluster_labels = clusterer.fit_predict(X)
+
+        # The silhouette_score gives the average value for all the samples.
+        # This gives a perspective into the density and separation of the formed
+        # clusters
+        silhouette_avg = silhouette_score(X, cluster_labels)
+        silhouettes.append(silhouette_avg)
+        # print("For n_clusters =", k, "The average silhouette_score is :", silhouette_avg)
+
+    return silhouettes
 
 def autolabels(freq,bins,patches):
     '''
@@ -310,6 +339,7 @@ def main():
     num_plots = 4
     verbosity = True
     n_clusters=3
+    k_sweep = range(2,20)
 
     # Instance
     test_img = NW_SEM_IMG(path=img_path, size=size, tilt=tilt, magn=magn, pitch=pitch, metric_size=metric_size, verbosity=verbosity)
@@ -321,8 +351,13 @@ def main():
     grayscale, grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
     img_conComp, base, height = test_img.connected_components(bw=bw, n_clusters=n_clusters)
 
+    X = np.concatenate((height,base), axis=1)
+    # Optimizing k
+    distortions = elbow_method(k_sweep, X)
+    silhouettes = silhouette_method(k_sweep, X)
+
     # Non class methods
-    X, size_centers, rect_labels = det_obj_clustering(base, height, n_clusters)
+    size_centers, rect_labels = det_obj_clustering(X, n_clusters)
     df, sort_centers, sort_labels = results_clustering(size_centers, rect_labels, n_clusters)
     print(df)
 
