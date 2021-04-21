@@ -236,7 +236,7 @@ class NW_SEM_IMG:
         plt.show()
         return
 
-def det_obj_clustering(X, n_clusters):
+def det_obj_clustering(X, n_clusters=3):
     '''
     KMeans clustering for detecting rectangles
     '''
@@ -250,7 +250,7 @@ def det_obj_clustering(X, n_clusters):
 
     return size_centers, rect_labels
 
-def results_clustering(size_centers, rect_labels, n_clusters):
+def results_clustering(size_centers, rect_labels, n_clusters=3):
     '''
     Computes the kmeans clustering to detect objects (NWs) in the image and
     yields the results in a pandas dataframe.
@@ -292,6 +292,9 @@ def elbow_method(K, X):
     return distortions
 
 def silhouette_method(K, X):
+    '''
+    Uses the silhouettes method to find the optimal number of clusters for KMeans
+    '''
     silhouettes = []
     for k in K:
         # Initialize the clusterer with n_clusters value and a random generator
@@ -340,6 +343,7 @@ def main():
     verbosity = True
     n_clusters=3
     k_sweep = range(2,20)
+    optimum = False
 
     # Instance
     test_img = NW_SEM_IMG(path=img_path, size=size, tilt=tilt, magn=magn, pitch=pitch, metric_size=metric_size, verbosity=verbosity)
@@ -348,17 +352,20 @@ def main():
     # Methods
     img = test_img.img_loader()
     img_cr = test_img.img_processing(img)
-    grayscale, grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=3)
+    grayscale, grayscale_n , bw, thr = test_img.img_filtering(img=img_cr, n_clusters=n_clusters)
     img_conComp, base, height = test_img.connected_components(bw=bw, n_clusters=n_clusters)
 
     X = np.concatenate((height,base), axis=1)
     # Optimizing k
-    distortions = elbow_method(k_sweep, X)
-    silhouettes = silhouette_method(k_sweep, X)
+    if optimum:
+        distortions = elbow_method(k_sweep, X)
+        silhouettes = silhouette_method(k_sweep, X)
+    else:
+        num_clusters = 5
 
     # Non class methods
     size_centers, rect_labels = det_obj_clustering(X, n_clusters)
-    df, sort_centers, sort_labels = results_clustering(size_centers, rect_labels, n_clusters)
+    df, sort_centers, sort_labels = results_clustering(size_centers, rect_labels, num_clusters)
     print(df)
 
     # From analysis define number of top_clusters
