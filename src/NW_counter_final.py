@@ -116,7 +116,6 @@ class NW_SEM_IMG:
         '''
         Method to filter the image
         '''
-
         # KMeans thresholding (Pixel clustering)
         grayscale = cv2.cvtColor(img , cv2.COLOR_BGR2GRAY)
         grayscale_n = grayscale.reshape(grayscale.shape[0]*grayscale.shape[1],1)/255
@@ -207,32 +206,60 @@ class NW_SEM_IMG:
 
         return results_df
 
-    def printer(self, num_plots):
-        '''Method to print images'''
+    def display_SEM_imgs(self, num_plots=4):
+        '''
+        Method to print the original image, the cropped image, 
+        the histogram of the filtered image pixels and the detected objects image.
+        2x2 matrix with 4 images.
+        '''
         img = self.img_loader()
         img_cr = self.img_processing(img)
         _, grayscale_n , bw,_ = self.img_filtering(img=img_cr, n_clusters=3)
+        counts , vals = np.histogram(grayscale_n, bins=500)
         img_conComp,_,_ = self.connected_components(bw=bw, n_clusters=3)
 
         fig = plt.figure()
-        ax1 = fig.add_subplot(2,num_plots/2,1)
-        ax1.imshow(img)
-        plt.title('Original Image')
-        plt.axis('off')
-        ax2 = fig.add_subplot(2,num_plots/2,2)
-        ax2.imshow(img_cr)
-        plt.title('Cropped Image')
-        plt.axis('off')
-        ax3 = fig.add_subplot(2,num_plots/2,3)
-        counts , vals = np.histogram(grayscale_n, bins=500)
-        plt.plot(np.linspace(0,1, num=500), counts, label='original')
-        plt.title('Grayscale image histogram')
-        plt.xlabel('Pixel intensity')
-        plt.ylabel('Count')
-        ax4 = fig.add_subplot(2,num_plots/2,4)
-        ax4.imshow(img_conComp)
-        plt.title('Detected Objects')
-        plt.axis('off')
+        titles = [
+            'Original image',
+            'Cropped image',
+            'Greyscale image histogram',
+            'Detected Objects'
+        ]
+        images = [
+            img,
+            img_cr,
+            counts,
+            img_conComp
+        ]
+        for i in range(len(titles)):
+            ax = fig.add_subplot(2, num_plots/2, i)
+            if titles[i] == 'Greyscale image historgram':
+                plt.plot(np.linspace(0,1,num=500),images[i],label='original')
+                plt.title(titles[i])
+                plt.xlabel('Pixel intensity')
+                plt.ylabel('Count')
+                pass
+            else:
+                ax.imshow(imgages[i])
+                plt.title(titles[i])
+                plt.axis('off')
+        # ax1 = fig.add_subplot(2,num_plots/2,1)
+        # ax1.imshow(img)
+        # plt.title('Original Image')
+        # plt.axis('off')
+        # ax2 = fig.add_subplot(2,num_plots/2,2)
+        # ax2.imshow(img_cr)
+        # plt.title('Cropped Image')
+        # plt.axis('off')
+        # ax3 = fig.add_subplot(2,num_plots/2,3)
+        # plt.plot(np.linspace(0,1, num=500), counts, label='original')
+        # plt.title('Grayscale image histogram')
+        # plt.xlabel('Pixel intensity')
+        # plt.ylabel('Count')
+        # ax4 = fig.add_subplot(2,num_plots/2,4)
+        # ax4.imshow(img_conComp)
+        # plt.title('Detected Objects')
+        # plt.axis('off')
         plt.show()
         return
 
@@ -374,7 +401,7 @@ def main():
     print(results_df)
 
     # Plots
-    # test_img.printer(num_plots=num_plots)
+    # test_img.display_SEM_imgs(num_plots=num_plots)
 
 if __name__ == '__main__':
     main()
