@@ -25,9 +25,6 @@ class NW_SEM_IMG:
         self.__imgHeight = size[1]
         self.__nmToPx = 0
         self.__imgCrSize = []
-        
-        return  
-    
     
     def __str__(self):
         '''Print instance's info'''
@@ -240,7 +237,7 @@ class NW_SEM_IMG:
                 plt.ylabel('Count')
                 pass
             else:
-                ax.imshow(imgages[i])
+                ax.imshow(images[i])
                 plt.title(titles[i])
                 plt.axis('off')
         # ax1 = fig.add_subplot(2,num_plots/2,1)
